@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Text Editor with Undo/Redo</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .header p {
+            margin: 10px 0 0;
+            opacity: 0.9;
+        }
+
+        .toolbar {
+            background: #ecf0f1;
+            padding: 15px 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+            border-bottom: 2px solid #bdc3c7;
+        }
+
+        .toolbar button {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .toolbar button:not(:disabled):hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .btn-undo {
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+            color: white;
+        }
+
+        .btn-redo {
+            background: linear-gradient(135deg, #27ae60 0%, #229954 100%);
+            color: white;
+        }
+
+        .btn-clear {
+            background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+            color: white;
+        }
+
+        .btn-save {
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            color: white;
+        }
+
+        .toolbar button:disabled {
+            background: #95a5a6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .editor-container {
+            padding: 20px;
+        }
+
+        #editor {
+            width: 100%;
+            min-height: 400px;
+            padding: 20px;
+            border: 2px solid #bdc3c7;
+            border-radius: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            line-height: 1.6;
+            resize: vertical;
+            transition: border-color 0.3s ease;
+        }
+
+        #editor:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+        }
+
+        .status-bar {
+            background: #2c3e50;
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .status-badge {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-weight: bold;
+        }
+
+        .status-available {
+            background: #27ae60;
+        }
+
+        .status-unavailable {
+            background: #e74c3c;
+        }
+
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            background: #27ae60;
+            color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+            z-index: 1000;
+        }
+
+        .toast.show {
+            transform: translateX(0);
+        }
+
+        .toast.error {
+            background: #e74c3c;
+        }
+
+        .loading {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .loading.show {
+            display: flex;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 768px) {
+            .toolbar {
+                justify-content: center;
+            }
+            
+            .status-bar {
+                flex-direction: column;
+                text-align: center;
+            }
+            
+            .toolbar button {
+                flex: 1;
+                min-width: 120px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📝 Text Editor</h1>
+            <p>With Undo/Redo functionality using Memento Pattern</p>
+        </div>
+
+        <div class="toolbar">
+            <button id="undoBtn" class="btn-undo" disabled>↩ Undo</button>
+            <button id="redoBtn" class="btn-redo" disabled>↪ Redo</button>
+            <button id="clearBtn" class="btn-clear">🗑️ Clear</button>
+            <button id="saveBtn" class="btn-save">💾 Save State</button>
+        </div>
+
+        <div class="editor-container">
+            <textarea id="editor" placeholder="Start typing your text here..."></textarea>
+        </div>
+
+        <div class="status-bar">
+            <div class="status-item">
+                <span>Characters:</span>
+                <span id="charCount" class="status-badge">0</span>
+            </div>
+            <div class="status-item">
+                <span>Undo:</span>
+                <span id="undoStatus" class="status-badge status-unavailable">Not Available</span>
+            </div>
+            <div class="status-item">
+                <span>Redo:</span>
+                <span id="redoStatus" class="status-badge status-unavailable">Not Available</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+    
+    <div id="loading" class="loading">
+        <div class="spinner"></div>
+    </div>
+
+    <script>
+        const API_BASE = '/api/editor';
+        let isProcessing = false;
+
+        // DOM Elements
+        const editor = document.getElementById('editor');
+        const undoBtn = document.getElementById('undoBtn');
+        const redoBtn = document.getElementById('redoBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const saveBtn = document.getElementById('saveBtn');
+        const charCount = document.getElementById('charCount');
+        const undoStatus = document.getElementById('undoStatus');
+        const redoStatus = document.getElementById('redoStatus');
+        const toast = document.getElementById('toast');
+        const loading = document.getElementById('loading');
+
+        // Debounce function to limit API calls
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+        // Show toast message
+        function showToast(message, isError = false) {
+            toast.textContent = message;
+            toast.className = isError ? 'toast error show' : 'toast show';
+            setTimeout(() => {
+                toast.className = 'toast';
+            }, 3000);
+        }
+
+        // Show/hide loading
+        function setLoading(show) {
+            loading.className = show ? 'loading show' : 'loading';
+            isProcessing = show;
+        }
+
+        // Fetch current content
+        async function fetchContent() {
+            try {
+                const response = await fetch(`${API_BASE}/content`);
+                if (!response.ok) throw new Error('Failed to fetch content');
+                const content = await response.text();
+                editor.value = content;
+                updateCharCount();
+            } catch (error) {
+                showToast('Error fetching content: ' + error.message, true);
+            }
+        }
+
+        // Check undo/redo availability
+        async function checkUndoRedo() {
+            try {
+                const [undoResponse, redoResponse] = await Promise.all([
+                    fetch(`${API_BASE}/can-undo`),
+                    fetch(`${API_BASE}/can-redo`)
+                ]);
+
+                if (!undoResponse.ok || !redoResponse.ok) {
+                    throw new Error('Failed to check undo/redo status');
+                }
+
+                const [canUndo, canRedo] = await Promise.all([
+                    undoResponse.json(),
+                    redoResponse.json()
+                ]);
+
+                undoBtn.disabled = !canUndo;
+                redoBtn.disabled = !canRedo;
+                
+                undoStatus.textContent = canUndo ? 'Available' : 'Not Available';
+                undoStatus.className = canUndo ? 'status-badge status-available' : 'status-badge status-unavailable';
+                
+                redoStatus.textContent = canRedo ? 'Available' : 'Not Available';
+                redoStatus.className = canRedo ? 'status-badge status-available' : 'status-badge status-unavailable';
+
+            } catch (error) {
+                showToast('Error checking undo/redo: ' + error.message, true);
+            }
+        }
+
+        // Update character count
+        function updateCharCount() {
+            charCount.textContent = editor.value.length;
+        }
+
+        // Save text to server
+
+
+// Helper function to get current content from server
+async function getCurrentServerContent() {
+    try {
+        const response = await fetch(`${API_BASE}/content`);
+        if (!response.ok) throw new Error('Failed to fetch content');
+        return await response.text();
+    } catch (error) {
+        showToast('Error getting server content: ' + error.message, true);
+        return '';
+    }
+}
+
+        // Undo operation
+        async function undo() {
+            if (isProcessing) return;
+            
+            setLoading(true);
+            try {
+                const response = await fetch(`${API_BASE}/undo`, {
+                    method: 'POST'
+                });
+
+                if (!response.ok) throw new Error('Failed to undo');
+                
+                const content = await response.text();
+                editor.value = content;
+                updateCharCount();
+                await checkUndoRedo();
+                showToast('Undo successful!');
+            } catch (error) {
+                showToast('Error undoing: ' + error.message, true);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        // Redo operation
+        async function redo() {
+            if (isProcessing) return;
+            
+            setLoading(true);
+            try {
+                const response = await fetch(`${API_BASE}/redo`, {
+                    method: 'POST'
+                });
+
+                if (!response.ok) throw new Error('Failed to redo');
+                
+                const content = await response.text();
+                editor.value = content;
+                updateCharCount();
+                await checkUndoRedo();
+                showToast('Redo successful!');
+            } catch (error) {
+                showToast('Error redoing: ' + error.message, true);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        // Clear editor
+        async function clearEditor() {
+            if (isProcessing) return;
+            if (!confirm('Are you sure you want to clear all text?')) return;
+            
+            setLoading(true);
+            try {
+                const response = await fetch(`${API_BASE}/clear`, {
+                    method: 'POST'
+                });
+
+                if (!response.ok) throw new Error('Failed to clear');
+                
+                editor.value = '';
+                updateCharCount();
+                await checkUndoRedo();
+                showToast('Editor cleared successfully!');
+            } catch (error) {
+                showToast('Error clearing: ' + error.message, true);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        // Manual save state
+        async function saveState() {
+            if (isProcessing) return;
+            
+            setLoading(true);
+            try {
+                // Just trigger a save with current content
+                await saveText(editor.value);
+                showToast('State saved successfully!');
+            } catch (error) {
+                showToast('Error saving state: ' + error.message, true);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        // Event listeners
+        editor.addEventListener('input', (e) => {
+            updateCharCount();
+            saveText(e.target.value);
+        });
+
+        undoBtn.addEventListener('click', undo);
+        redoBtn.addEventListener('click', redo);
+        clearBtn.addEventListener('click', clearEditor);
+        saveBtn.addEventListener('click', saveState);
+
+let lastContent = ''; // Track the last known server content
+let isTyping = false; // Track if user is currently typing
+
+
+
+// Enhanced text comparison function
+function getTextOperation(oldText, newText) {
+    if (newText === oldText) {
+        return { type: 'nochange' };
+    }
+    
+    // Check if text was appended at the end (most common case)
+    if (newText.startsWith(oldText)) {
+        return {
+            type: 'append',
+            text: newText.substring(oldText.length)
+        };
+    }
+    
+    // Check if text was prepended at the beginning
+    if (newText.endsWith(oldText)) {
+        return {
+            type: 'prepend', 
+            text: newText.substring(0, newText.length - oldText.length)
+        };
+    }
+    
+    // For any other modification, treat as full replacement
+    return {
+        type: 'replace',
+        text: newText
+    };
+}
+
+// Save text with intelligent operation detection
+const saveText = debounce(async (currentText) => {
+    if (isProcessing || currentText === lastContent) return;
+    
+    setLoading(true);
+    try {
+        const operation = getTextOperation(lastContent, currentText);
+        let response;
+        
+        switch (operation.type) {
+            case 'append':
+                response = await fetch(`${API_BASE}/append-text`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain' },
+                    body: operation.text
+                });
+                break;
+                
+            case 'replace':
+            case 'prepend':
+                response = await fetch(`${API_BASE}/set-content`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain' },
+                    body: currentText
+                });
+                break;
+                
+            case 'nochange':
+                return; // No need to save
+        }
+
+        if (!response.ok) throw new Error('Failed to save text');
+        
+        // Update last known content from server response
+        const savedContent = await response.text();
+        lastContent = savedContent;
+        
+        await checkUndoRedo();
+        showToast('Changes saved successfully!');
+        
+    } catch (error) {
+        showToast('Error saving text: ' + error.message, true);
+        // Re-fetch content from server to sync state
+        await fetchContent();
+    } finally {
+        setLoading(false);
+    }
+}, 800); // Reduced debounce time for better responsiveness
+
+// Handle special keys that might trigger operations
+editor.addEventListener('keydown', (e) => {
+    // Handle backspace, delete, enter, etc.
+    isTyping = true;
+});
+
+editor.addEventListener('keyup', (e) => {
+    isTyping = false;
+});
+
+// Handle paste and cut events
+editor.addEventListener('paste', (e) => {
+    setTimeout(() => {
+        saveText(editor.value);
+    }, 100);
+});
+
+editor.addEventListener('cut', (e) => {
+    setTimeout(() => {
+        saveText(editor.value);
+    }, 100);
+});
+
+// Enhanced event listener for input
+editor.addEventListener('input', (e) => {
+    updateCharCount();
+    saveText(e.target.value);
+});
+
+// Enhanced undo with better state handling
+async function undo() {
+    if (isProcessing) return;
+    
+    setLoading(true);
+    try {
+        const response = await fetch(`${API_BASE}/undo`, {
+            method: 'POST'
+        });
+
+        if (!response.ok) throw new Error('Failed to undo');
+        
+        const content = await response.text();
+        editor.value = content;
+        lastContent = content; // Update last known content
+        updateCharCount();
+        await checkUndoRedo();
+        showToast('Undo successful!');
+    } catch (error) {
+        showToast('Error undoing: ' + error.message, true);
+    } finally {
+        setLoading(false);
+    }
+}
+
+// Enhanced redo with better state handling  
+async function redo() {
+    if (isProcessing) return;
+    
+    setLoading(true);
+    try {
+        const response = await fetch(`${API_BASE}/redo`, {
+            method: 'POST'
+        });
+
+        if (!response.ok) throw new Error('Failed to redo');
+        
+        const content = await response.text();
+        editor.value = content;
+        lastContent = content; // Update last known content
+        updateCharCount();
+        await checkUndoRedo();
+        showToast('Redo successful!');
+    } catch (error) {
+        showToast('Error redoing: ' + error.message, true);
+    } finally {
+        setLoading(false);
+    }
+}
+
+// Enhanced clear function
+async function clearEditor() {
+    if (isProcessing) return;
+    if (!confirm('Are you sure you want to clear all text?')) return;
+    
+    setLoading(true);
+    try {
+        const response = await fetch(`${API_BASE}/clear`, {
+            method: 'POST'
+        });
+
+        if (!response.ok) throw new Error('Failed to clear');
+        
+        editor.value = '';
+        lastContent = ''; // Reset last known content
+        updateCharCount();
+        await checkUndoRedo();
+        showToast('Editor cleared successfully!');
+    } catch (error) {
+        showToast('Error clearing: ' + error.message, true);
+    } finally {
+        setLoading(false);
+    }
+}
+
+// Enhanced initialization
+document.addEventListener('DOMContentLoaded', async () => {
+    setLoading(true);
+    await Promise.all([fetchContent(), checkUndoRedo()]);
+    lastContent = editor.value; // Initialize with current content
+    setLoading(false);
+});
+
+// Keep your existing helper functions (debounce, showToast, setLoading, fetchContent, checkUndoRedo, updateCharCount)
+// ... [existing helper functions remain the same] ...
+    </script>
+</body>
+</html>
